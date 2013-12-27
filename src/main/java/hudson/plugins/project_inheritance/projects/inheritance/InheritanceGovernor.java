@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2011-2013, Intel Mobile Communications GmbH
- * 
+ * Copyright © 2014 Contributor.  All rights reserved.
  * 
  * This file is part of the Inheritance plug-in for Jenkins.
  * 
@@ -25,10 +25,13 @@ import hudson.cli.BuildCommand;
 import hudson.model.Build;
 import hudson.model.Describable;
 import hudson.model.Saveable;
+import hudson.model.AbstractBuild.AbstractRunner;
+import hudson.model.AbstractProject;
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
 import hudson.model.Project;
 import hudson.model.Queue;
+import hudson.model.listeners.RunListener;
 import hudson.plugins.project_inheritance.projects.InheritanceProject;
 import hudson.plugins.project_inheritance.projects.InheritanceProject.IMode;
 import hudson.plugins.project_inheritance.projects.references.AbstractProjectReference;
@@ -426,11 +429,25 @@ public abstract class InheritanceGovernor<T> {
 				) ||
 				Reflection.calledFromMethod(
 						InheritanceProject.class,
-						"doBuild", "scheduleBuild2", "doBuildWithParameters"
+						"doBuild", "scheduleBuild2", "doBuildWithParameters", "buildDependencyGraph"
 				) ||
+				//for scmtriggr / polling
+				Reflection.calledFromMethod(
+						AbstractProject.class,
+						"poll"
+				) ||
+				// for all triggers
 				Reflection.calledFromMethod(
 						Trigger.class,
 						"checkTriggers"
+				) ||
+				Reflection.calledFromMethod(
+						RunListener.class,
+						"onCompleted"
+				) ||
+				Reflection.calledFromMethod(
+						AbstractRunner.class,
+						"post2"
 				)) {
 			return true;
 		}
@@ -439,8 +456,8 @@ public abstract class InheritanceGovernor<T> {
 		if (req != null) {
 			String uri = req.getRequestURI();
 			if (inheritanceRequiredByRequestURI(uri)) {
-                return true;
-            }
+				return true;
+			}
 		}
 		
 		//in all other cases, we don't require (or want) inheritance
@@ -452,11 +469,11 @@ public abstract class InheritanceGovernor<T> {
                 RequestInheritanceChecker.class);
         for (RequestInheritanceChecker requestInheritanceChecker : list) {
             if (requestInheritanceChecker.isInheritanceRequired(uri)) {
-                return true;
-            }
-        }
-        return false;
-    }
+				return true;
+			}
+		}
+		return false;
+	}
 	
 	/**
 	 * This method uses reflection to tell whether the current state means
