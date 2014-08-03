@@ -1,6 +1,6 @@
 ﻿/**
- * Copyright 2011-2013, Intel Mobile Communications GmbH
- * Copyright ? 2014 Contributor.  All rights reserved.
+ * Copyright (c) 2011-2013, Intel Mobile Communications GmbH
+ * Copyright (r) 2014 Contributor.  All rights reserved.
  * 
  * This file is part of the Inheritance plug-in for Jenkins.
  * 
