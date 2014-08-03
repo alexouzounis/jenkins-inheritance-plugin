@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright 2014 Contributor.  All rights reserved.
  * 
  * This file is part of the Inheritance plug-in for Jenkins.

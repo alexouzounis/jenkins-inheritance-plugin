@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright 2011-2013, Intel Mobile Communications GmbH
  * Copyright 2014 Contributor.  All rights reserved.
  * 
