@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2011-2013, Intel Mobile Communications GmbH
  * Copyright ? 2014 Contributor.  All rights reserved.
  * 
@@ -40,6 +40,7 @@ import hudson.plugins.project_inheritance.projects.references.ProjectReference.P
 import hudson.plugins.project_inheritance.util.Reflection;
 import hudson.scm.SCM;
 import hudson.tasks.BuildTrigger;
+import hudson.tasks.BuildStep;
 import hudson.triggers.Trigger;
 import hudson.util.DescribableList;
 
@@ -425,7 +426,7 @@ public abstract class InheritanceGovernor<T> {
 		if (forcedInherit || root.getIsTransient() ||
 				Reflection.calledFromClass(
 						Build.class, BuildCommand.class,
-						Queue.class, BuildTrigger.class,BuildStep.class
+						Queue.class, BuildTrigger.class, BuildStep.class
 				) ||
 				Reflection.calledFromMethod(
 						InheritanceProject.class,
