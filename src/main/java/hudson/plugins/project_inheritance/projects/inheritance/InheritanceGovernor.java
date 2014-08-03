@@ -24,13 +24,13 @@ import hudson.ExtensionList;
 import hudson.cli.BuildCommand;
 import hudson.model.Build;
 import hudson.model.Describable;
+import hudson.model.Queue;
 import hudson.model.Saveable;
 import hudson.model.AbstractBuild.AbstractRunner;
 import hudson.model.AbstractProject;
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
 import hudson.model.Project;
-import hudson.model.Queue;
 import hudson.model.listeners.RunListener;
 import hudson.plugins.project_inheritance.projects.InheritanceProject;
 import hudson.plugins.project_inheritance.projects.InheritanceProject.IMode;
@@ -39,6 +39,7 @@ import hudson.plugins.project_inheritance.projects.references.ProjectReference.P
 import hudson.plugins.project_inheritance.projects.references.ProjectReference.PrioComparator.SELECTOR;
 import hudson.plugins.project_inheritance.util.Reflection;
 import hudson.scm.SCM;
+import hudson.tasks.BuildStep;
 import hudson.tasks.BuildTrigger;
 import hudson.triggers.Trigger;
 import hudson.util.DescribableList;
@@ -422,36 +423,13 @@ public abstract class InheritanceGovernor<T> {
 		 * 3.) The project is called in the context of a build
 		 * 4.) The queue queries properties of the project 
 		 */
-		if (forcedInherit || root.getIsTransient() ||
-				Reflection.calledFromClass(
-						Build.class, BuildCommand.class,
-						Queue.class, BuildTrigger.class
-				) ||
-				Reflection.calledFromMethod(
-						InheritanceProject.class,
-						"doBuild", "scheduleBuild2", "doBuildWithParameters", "buildDependencyGraph"
-				) ||
-				//for scmtriggr / polling
-				Reflection.calledFromMethod(
-						AbstractProject.class,
-						"poll"
-				) ||
-				// for all triggers
-				Reflection.calledFromMethod(
-						Trigger.class,
-						"checkTriggers"
-				) ||
-				Reflection.calledFromMethod(
-						RunListener.class,
-						"onCompleted"
-				) ||
-				Reflection.calledFromMethod(
-						AbstractRunner.class,
-						"post2"
-				)) {
-			return true;
+		
+		//Check forced inheritance or transience
+		if (forcedInherit || root.getIsTransient()) {
+		return true;
 		}
-		//Another possibility is that the user requested a build page
+		
+		//Checking the Stapler Request, because it is fast
 		StaplerRequest req = Stapler.getCurrentRequest();
 		if (req != null) {
 			String uri = req.getRequestURI();
@@ -472,6 +450,21 @@ public abstract class InheritanceGovernor<T> {
 				return true;
 			}
 		}
+		//Check via expensive stack reflection
+		if (Reflection.calledFromClass(
+				Build.class, BuildCommand.class,
+				Queue.class, BuildTrigger.class,
+				Trigger.class, BuildStep.class
+			) ||
+			Reflection.calledFromMethod(
+					InheritanceProject.class,
+					"doBuild", "scheduleBuild2", "doBuildWithParameters"
+			)
+		) {
+			return true;
+		}
+		
+		//in all other cases, we don't require (or want) inheritance
 		return false;
 	}
 	

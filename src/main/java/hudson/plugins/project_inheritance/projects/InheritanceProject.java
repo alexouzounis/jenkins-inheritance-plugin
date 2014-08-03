@@ -42,6 +42,7 @@ import hudson.model.Cause.UserIdCause;
 import hudson.model.CauseAction;
 import hudson.model.Descriptor;
 import hudson.model.Descriptor.FormException;
+import hudson.model.Queue.WaitingItem;
 import hudson.model.Hudson;
 import hudson.model.Job;
 import hudson.model.Label;
@@ -62,6 +63,7 @@ import hudson.plugins.project_inheritance.projects.creation.ProjectCreationEngin
 import hudson.plugins.project_inheritance.projects.creation.ProjectCreationEngine.CreationClass;
 import hudson.plugins.project_inheritance.projects.inheritance.InheritanceGovernor;
 import hudson.plugins.project_inheritance.projects.parameters.InheritableStringParameterDefinition;
+import hudson.plugins.project_inheritance.projects.parameters.InheritableStringParameterReferenceDefinition;
 import hudson.plugins.project_inheritance.projects.parameters.InheritableStringParameterDefinition.IModes;
 import hudson.plugins.project_inheritance.projects.parameters.InheritanceParametersDefinitionProperty;
 import hudson.plugins.project_inheritance.projects.parameters.InheritanceParametersDefinitionProperty.ScopeEntry;
@@ -70,6 +72,7 @@ import hudson.plugins.project_inheritance.projects.references.SimpleProjectRefer
 import hudson.plugins.project_inheritance.projects.references.AbstractProjectReference;
 import hudson.plugins.project_inheritance.projects.references.ParameterizedProjectReference;
 import hudson.plugins.project_inheritance.projects.references.ProjectReference;
+import hudson.plugins.project_inheritance.projects.references.ProjectReference.PrioComparator;
 import hudson.plugins.project_inheritance.projects.references.ProjectReference.PrioComparator.SELECTOR;
 import hudson.plugins.project_inheritance.projects.view.InheritanceViewAction;
 import hudson.plugins.project_inheritance.util.Helpers;
@@ -118,6 +121,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -129,6 +133,7 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 
 import javax.servlet.ServletException;
+import javax.xml.transform.Source;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
@@ -757,6 +762,20 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 		ProjectCreationEngine.instance.notifyProjectChange(this);
 	}
 	
+	@Override
+	public void updateByXml(Source source) throws IOException {
+		//Instruct the parent to update us
+		super.updateByXml(source);
+		//Then, save a new version
+		
+		clearBuffers(this);
+		this.dumpConfigToNewVersion("New version uploaded as XML via API/CLI");
+		clearBuffers(this);
+		
+		//Notify the PCE about our changes
+		ProjectCreationEngine.instance.notifyProjectChange(this);
+	}
+	
 	@RequirePOST
 	public synchronized void doSubmitChildJobCreation(
 			StaplerRequest req, StaplerResponse rsp)
@@ -891,28 +910,71 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	
 	/**
 	 * Adds the given {@link ProjectReference} as a parent to this node.
-	 * 
+	 * <p>
 	 * TODO: The fact that this function is public is really nasty.
 	 * Basically, references should only be used through the validated
 	 * frontend, or set by the equally validated {@link ProjectCreationEngine}.
-	 * 
+	 * <p>
 	 * Of course, since the user can just scribble around in the XML -- if
 	 * the job isn't transient -- we can't prevent broken references
 	 * anyway.
+	 * <p>
+	 * Do note that this change will not trigger any versioning or saving to
+	 * disk. If you use this, you need to know exactly what you're doing; for
+	 * example calling this in proper UnitTests.
 	 * 
-	 * @param ref
+	 * @param ref the reference to add
+	 * @param noDuplicateCheck set to false, if no duplication check shall be done.
+	 * 		This is only useful in Unit-tests and nowhere else.
 	 */
-	public void addParentReference(AbstractProjectReference ref) {
+	public void addParentReference(AbstractProjectReference ref, boolean duplicateCheck) {
 		//Checking if we already have such a reference
-		for (AbstractProjectReference ourRef : this.getParentReferences()) {
-			if (ourRef.getName().equals(ref.getName())) {
-				//No point in duplicated references
-				return;
+		if (duplicateCheck) {
+			for (AbstractProjectReference ourRef : this.getParentReferences()) {
+				if (ourRef.getName().equals(ref.getName())) {
+					//No point in duplicated references
+					return;
+				}
 			}
 		}
 		//Otherwise, we can add it. Of course, it might still lead to circular
 		//references, or simply and plainly not exist
 		this.parentReferences.push(ref);
+		
+		//And invalidating all caches
+		clearBuffers(this);
+	}
+	
+	/**
+	 * Wrapper around
+	 * {@link #addParentReference(AbstractProjectReference, boolean)} with
+	 * duplication check enabled.
+	 * 
+	 * @param ref the references to add as a parent.
+	 */
+	public void addParentReference(AbstractProjectReference ref) {
+		this.addParentReference(ref, true);
+	}
+	
+	/**
+	 * Removes a parent reference.
+	 * <p>
+	 * Same caveats apply as for {@link #addParentReference(AbstractProjectReference)}.
+	 * 
+	 * @param name the name of the project for which to remove one parent reference.
+	 * @return true, if a parent reference was removed.
+	 */
+	public boolean removeParentReference(String name) {
+		Iterator<AbstractProjectReference> iter = this.parentReferences.iterator();
+		while (iter.hasNext()) {
+			AbstractProjectReference apr = iter.next();
+			if (apr.getName().equals(name)) {
+				iter.remove();
+				clearBuffers(this);
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	public void setVarianceLabel(String variance) {
@@ -1649,6 +1711,13 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	
 	/**
 	 * {@inheritDoc}
+	 * <p>
+	 * <b>Do note:</b> This method is <i>not</i> calling the super-implementation,
+	 * because it is not aware that the default values for parameters must be
+	 * derived via inheritance, if the method is called directly (instead of
+	 * via the CLI).
+	 * 
+	 * @see InheritableStringParameterDefinition#getDefaultParameterValue()
 	 */
 	public QueueTaskFuture<InheritanceBuild> scheduleBuild2(
 			int quietPeriod, Cause c, Collection<? extends Action> actions) {
@@ -1699,8 +1768,32 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 			actions = newActions;
 		}
 		
-		//At the end, start the build with the new set of actions
-		return super.scheduleBuild2(quietPeriod, c, actions);
+		//The buildable check must be done after versioning assignment
+		if (!isBuildable()) { return null; }
+
+		List<Action> queueActions = new ArrayList<Action>(actions);
+		if (isParameterized() && Util.filter(queueActions, ParametersAction.class).isEmpty()) {
+			List<ParameterValue> pvLst = new ArrayList<ParameterValue>();
+			for (ParameterDefinition def : this.getParameters()) {
+				if (def instanceof InheritableStringParameterDefinition) {
+					InheritableStringParameterDefinition ispd =
+							(InheritableStringParameterDefinition) def;
+					pvLst.add(ispd.createValue(ispd.getDefaultValue()));
+				} else {
+					pvLst.add(def.getDefaultParameterValue());
+				}
+			}
+			queueActions.add(new ParametersAction(pvLst));
+		}
+		
+		if (c != null) {
+			queueActions.add(new CauseAction(c));
+		}
+		
+		WaitingItem i = Jenkins.getInstance().getQueue().schedule(
+				this, quietPeriod, queueActions
+		);
+		return (i == null) ? null : (QueueTaskFuture)i.getFuture();
 	}
 	
 	/**
@@ -1827,6 +1920,9 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 			//The selection of the stable version might have changed. So we need
 			//to clear the local buffers
 			clearBuffers(this);
+			
+			//Finally, triggering generation of new projects
+			ProjectCreationEngine.instance.notifyProjectChange(this);
 			
 			//At the end, we mark the forms as successfully submitted
 			FormApply.success(".").generateResponse(req, rsp, null);
@@ -2018,7 +2114,14 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 			this.versionStore.undoVersion(v);
 		}
 		//Save the file, to persist our changes
-		this.versionStore.save(this.getVersionFile());
+		try {
+			this.versionStore.save(this.getVersionFile());
+		} catch (IOException ex) {
+			log.severe(String.format(
+					"Failed to save version to: %s; Reason = %s",
+					this.getVersionFile(), ex.getMessage()
+			));
+		}
 	}
 	
 	
@@ -2612,15 +2715,53 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	 * will almost always lead to an infinite recursion.
 	 * 
 	 * @param sortKey the key specifying the order in which projects are returned.
-	 * @return
+	 * @return a list of all parent references
 	 */
-	private List<AbstractProjectReference> getAllParentReferences(
+	public List<AbstractProjectReference> getAllParentReferences(
 			ProjectReference.PrioComparator.SELECTOR sortKey) {
 		InheritanceGovernor<List<AbstractProjectReference>> gov =
 				this.getParentReferencesGovernor(sortKey);
 		return gov.retrieveFullyDerivedField(this, IMode.INHERIT_FORCED);
 	}
 	
+	/**
+	 * Wrapper for {@link #getAllParentReferences(SELECTOR)}, but will add
+	 * a reference to this project too, if needed.
+	 * 
+	 * @param sortKey the key specifying the order in which projects are returned.
+	 * @param addSelf if true, add a self-reference in the correct spot
+	 * @return a list of all parent references, including a self-reference if
+	 * addSelf is true.
+	 */
+	public List<AbstractProjectReference> getAllParentReferences(
+			ProjectReference.PrioComparator.SELECTOR sortKey, boolean addSelf) {
+		List<AbstractProjectReference> lst = this.getAllParentReferences(sortKey);
+		
+		if (addSelf) {
+			boolean hasAddedSelf = false;
+			ListIterator<AbstractProjectReference> iter = lst.listIterator();
+			while (iter.hasNext()) {
+				AbstractProjectReference ref = iter.next();
+				int prio;
+				if (ref instanceof ProjectReference) {
+					prio = PrioComparator.getPriorityFor(ref, sortKey);
+				} else {
+					//An anonymous ref is always at priority 0
+					prio = 0;
+				}
+				if (!hasAddedSelf && prio > 0) {
+					hasAddedSelf = true;
+					iter.add(new SimpleProjectReference(this.getFullName()));
+				}
+			}
+			//Check if we were able to add a self-reference at all
+			if (!hasAddedSelf) {
+				lst.add(new SimpleProjectReference(this.getFullName()));
+			}
+		}
+		
+		return lst;
+	}
 	
 	public List<AbstractProjectReference> getCompatibleProjects() {
 		return this.getCompatibleProjects(SELECTOR.MISC);
@@ -3071,7 +3212,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 					Deque<List<JobProperty<? super InheritanceProject>>> list) {
 				//First, we add the variances for the root project
 				InheritanceParametersDefinitionProperty variance = 
-						rootProject.getVarianceProperties();
+						rootProject.getVarianceParameters();
 				if (variance != null) {
 					List<JobProperty<? super InheritanceProject>> varLst =
 							new LinkedList<JobProperty<? super InheritanceProject>>();
@@ -3139,7 +3280,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 		return out;
 	}
 	
-	private InheritanceParametersDefinitionProperty getVarianceProperties() {
+	public InheritanceParametersDefinitionProperty getVarianceParameters() {
 		if (this.isTransient == false) {
 			//No variance is or can possibly be defined
 			return null;
@@ -3197,7 +3338,6 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 						new InheritanceParametersDefinitionProperty(
 								this, ppr.getParameters()
 						);
-				ipdp.addScopedParameterDefinitions(ipdp);
 				return ipdp;
 			}
 		}
@@ -3827,10 +3967,12 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	@Override
 	public boolean isBuildable() {
 		if (!super.isBuildable()) {
+			log.fine(String.format("%s not buildable; super.isBuildable() is false", this.getFullName()));
 			return false;
 		}
 		//Then, we check if it's an abstract job
 		if (this.isAbstract) {
+			log.fine(String.format("%s not buildable; project is abstract", this.getFullName()));
 			return false;
 		}
 		
@@ -3839,6 +3981,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 		AbstractMap.SimpleEntry<Boolean, String> paramCheck =
 				this.getParameterSanity();
 		if (paramCheck.getKey() == false) {
+			log.fine(String.format("%s not buildable; Parameter inconsistency: %s", this.getFullName(), paramCheck.getValue()));
 			return false;
 		}
 		
@@ -4435,7 +4578,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 		//Creating a small local class to store sanity information
 		final class SanityRestrictions {
 			public Class<?> hasToBeOfThisClass;
-			public boolean hasToBeFixed;
+			
 			public boolean hasToHaveDefaultSet;
 			public boolean hasToBeAssigned;
 			
@@ -4462,7 +4605,6 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 				if (pd instanceof InheritableStringParameterDefinition) {
 					InheritableStringParameterDefinition ispd =
 							(InheritableStringParameterDefinition) pd;
-					s.hasToBeFixed = (ispd.getInheritanceModeAsVar() == IModes.FIXED);
 					s.hasToHaveDefaultSet = ispd.getMustHaveDefaultValue();
 					s.hasToBeAssigned = ispd.getMustBeAssigned();
 					
@@ -4471,8 +4613,8 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 					
 					s.previousMode = ispd.getInheritanceModeAsVar();
 				} else {
-					s.hasToBeFixed = false;
 					s.hasToHaveDefaultSet = false;
+					s.previousMode = IModes.OVERWRITABLE;
 				}
 				
 				//No sense in checking this param instance further, as a
@@ -4495,7 +4637,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 				);
 			}
 			
-			if (s.hasToBeFixed) {
+			if (s.previousMode == IModes.FIXED) {
 				return new AbstractMap.SimpleEntry<Boolean, String>(
 						false, "Fixed parameter '" + pd.getName() +
 						"' may not be redefined at all."
@@ -4506,59 +4648,67 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 			if (pd instanceof InheritableStringParameterDefinition) {
 				InheritableStringParameterDefinition ispd =
 						(InheritableStringParameterDefinition) pd;
-				
-				//Checking if the "force-default-value" flag is set by the new one
-				if (ispd.getMustHaveDefaultValue()) {
-					s.hasToHaveDefaultSet = true;
+				//We ignore references, as they can never invalidate flags
+				//Otherwise, we check whether they unset values
+				if (!(pd instanceof InheritableStringParameterReferenceDefinition)) {
+					//Checking if the "force-default-value" flag is set by the new one
+					if (ispd.getMustHaveDefaultValue()) {
+						s.hasToHaveDefaultSet = true;
+					}
+					//Checking if the assignment flag was set by the new one
+					if (ispd.getMustBeAssigned()) {
+						s.hasToBeAssigned = true;
+					}
+					//Then, checking if the "force-default-value" flag was unset
+					if (s.hasToHaveDefaultSet && !ispd.getMustHaveDefaultValue()) {
+						return new AbstractMap.SimpleEntry<Boolean, String>(
+								false, "Parameter '" + pd.getName() +
+								"' may not unset the flag that ensures that a" +
+								" default value is set."
+								);
+					}
+					//Checking if the "must-be-assigned" flag was unset
+					if (s.hasToBeAssigned && !ispd.getMustBeAssigned()) {
+						return new AbstractMap.SimpleEntry<Boolean, String>(
+								false, "Parameter '" + pd.getName() +
+								"' may not unset the flag that ensures that a" +
+								" final value is set before execution."
+								);
+					}
 				}
-				//Checking if the assignment flag was set by the new one
-				if (ispd.getMustBeAssigned()) {
-					s.hasToBeAssigned = true;
-				}
-				
-				//Then, checking if the "force-default-value" flag was unset
-				if (s.hasToHaveDefaultSet && !ispd.getMustHaveDefaultValue()) {
-					return new AbstractMap.SimpleEntry<Boolean, String>(
-							false, "Parameter '" + pd.getName() +
-							"' may not unset the flag that ensures that a" +
-							" default value is set."
-					);
-				}
-				//Checking if the "must-be-assigned" flag was unset
-				if (s.hasToBeAssigned && !ispd.getMustBeAssigned()) {
-					return new AbstractMap.SimpleEntry<Boolean, String>(
-							false, "Parameter '" + pd.getName() +
-							"' may not unset the flag that ensures that a" +
-							" final value is set before execution."
-					);
-				}
-				
 				
 				//Checking if overwriting causes a previous default to be lost
 				String defVal = ispd.getDefaultValue();
 				boolean defValNewlySet = !(defVal == null || defVal.isEmpty());
 				
-				switch(s.previousMode) {
-					case OVERWRITABLE:
-						//An overwrite always causes the default to be discarded
-						s.hadDefaultSet = defValNewlySet;
-						break;
-					case EXTENSIBLE:
-						//An extension does not overwrite an already set default
-						if (!s.hadDefaultSet) {
+				try {
+					switch(s.previousMode) {
+						case OVERWRITABLE:
+							//An overwrite always causes the default to be discarded
 							s.hadDefaultSet = defValNewlySet;
-						}
-						break;
-					case FIXED:
-						//FIXED parameters are ignored
-						break;
-					default:
-						log.warning(
-								"Detected invalid inheritance mode: " +
-								s.previousMode.toString() + " on " +
-								this.getName() + "->" + pd.getName()
-						);
-						break;
+							break;
+						case EXTENSIBLE:
+							//An extension does not overwrite an already set default
+							if (!s.hadDefaultSet) {
+								s.hadDefaultSet = defValNewlySet;
+							}
+							break;
+						case FIXED:
+							//FIXED parameters are ignored
+							break;
+						default:
+							log.warning(
+									"Detected invalid inheritance mode: " +
+									s.previousMode.toString() + " on " +
+									this.getName() + "->" + pd.getName()
+							);
+							break;
+					}
+				} finally {
+					//In any case, we overwrite the sanity details with the new values
+					s.previousMode = ispd.getInheritanceModeAsVar();
+					s.hasToHaveDefaultSet = ispd.getMustHaveDefaultValue();
+					s.hasToBeAssigned = ispd.getMustBeAssigned();
 				}
 			}
 		}

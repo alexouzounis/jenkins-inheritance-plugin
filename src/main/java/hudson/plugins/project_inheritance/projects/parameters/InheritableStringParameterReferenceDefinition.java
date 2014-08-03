@@ -22,6 +22,8 @@ package hudson.plugins.project_inheritance.projects.parameters;
 
 import hudson.Extension;
 import hudson.model.ParameterDefinition;
+import hudson.model.ParameterValue;
+import hudson.model.StringParameterValue;
 import hudson.plugins.project_inheritance.projects.InheritanceProject;
 import hudson.plugins.project_inheritance.projects.InheritanceProject.IMode;
 import hudson.plugins.project_inheritance.projects.parameters.InheritanceParametersDefinitionProperty.ScopeEntry;
@@ -54,6 +56,18 @@ public class InheritableStringParameterReferenceDefinition extends
 		super(other);
 	}
 	
+	/**
+	 * This method returns the {@link InheritableStringParameterDefinition}
+	 * that is the parent of this reference, but is not a reference itself.
+	 * <p>
+	 * As such, this method is useless if you want to compute the final value
+	 * of the variable, but it is essential to find the value of the flags that
+	 * can only be defined on a true parameter, like {@link #getMustBeAssigned()}.
+	 * 
+	 * @return the actual {@link InheritableStringParameterDefinition} that this
+	 * reference ultimately points to. Skips all other
+	 * {@link InheritableStringParameterReferenceDefinition} in between them.
+	 */
 	public InheritableStringParameterDefinition getParent() {
 		InheritanceParametersDefinitionProperty ipdp = this.getRootProperty();
 		if (ipdp == null) {
@@ -61,17 +75,20 @@ public class InheritableStringParameterReferenceDefinition extends
 		}
 		
 		//Fetch the owner of this reference
-		String selfOwner = ipdp.getOwner().getDisplayName();
+		String selfOwner = ipdp.getOwner().getFullName();
 		
 		List<ScopeEntry> scope = ipdp.getAllScopedParameterDefinitions();
 		ListIterator<ScopeEntry> iter = scope.listIterator(scope.size());
 		while (iter.hasPrevious()) {
 			ScopeEntry entry = iter.previous();
 			//Refuse to return ourselves or siblings
-			if (entry.param == null || entry.owner == selfOwner ||entry.param == this) {
+			if (entry.param == null || entry.owner == selfOwner || entry.param == this) {
 				continue;
 			}
 			if (!(entry.param instanceof InheritableStringParameterDefinition)) {
+				continue;
+			}
+			if (entry.param instanceof InheritableStringParameterReferenceDefinition) {
 				continue;
 			}
 			if (entry.param.getName().equals(this.getName())) {
@@ -79,6 +96,23 @@ public class InheritableStringParameterReferenceDefinition extends
 			}
 		}
 		return null;
+	}
+	
+	@Override
+	public ParameterDefinition copyWithDefaultValue(ParameterValue defaultValue) {
+		if (!(defaultValue instanceof StringParameterValue)) {
+			//This should never happen
+			return super.copyWithDefaultValue(defaultValue);
+		}
+		
+		StringParameterValue spv = ((StringParameterValue) defaultValue);
+		String value = spv.value;
+		InheritableStringParameterReferenceDefinition isprd =
+				new InheritableStringParameterReferenceDefinition(
+						this.getName(), value
+				);
+		isprd.setRootProperty(this.getRootProperty());
+		return isprd;
 	}
 	
 	
@@ -139,6 +173,15 @@ public class InheritableStringParameterReferenceDefinition extends
 		return parent.getDescription();
 	}
 	
+	@Override
+	public boolean getIsHidden() {
+		InheritableStringParameterDefinition parent = this.getParent();
+		if (parent == null) {
+			//Return a dummy-value
+			return super.getIsHidden();
+		}
+		return parent.getIsHidden();
+	}
 
 	@Extension
 	public static class DescriptorImpl extends InheritableStringParameterDefinition.DescriptorImpl {

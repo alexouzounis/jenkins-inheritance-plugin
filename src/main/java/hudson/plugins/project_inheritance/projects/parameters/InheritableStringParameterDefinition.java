@@ -22,6 +22,7 @@ package hudson.plugins.project_inheritance.projects.parameters;
 
 import hudson.Extension;
 import hudson.model.ParameterValue;
+import hudson.model.AbstractProject;
 import hudson.model.ParameterDefinition;
 import hudson.model.ParametersDefinitionProperty;
 import hudson.model.StringParameterDefinition;
@@ -194,6 +195,11 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 	 * The first and second one are trivial cases where the default value is
 	 * used as is. The problem lies in dealing with an extensible parameter, as
 	 * in that case a prefix of the given default value may need to be stripped.
+	 * <p>
+	 * <b>Do note</b> that this is automatically done when you call
+	 * {@link #getDerivedValue(String, boolean)}, but <b>not</b> when you call
+	 * {@link #produceDerivedValue(String)}. If you need to access this
+	 * behaviour from some place else, call {@link #stripInheritedPrefixFromValue()}
 	 */
 	@Override
 	public ParameterDefinition copyWithDefaultValue(ParameterValue defaultValue) {
@@ -204,9 +210,6 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 		
 		StringParameterValue spv = ((StringParameterValue) defaultValue);
 		String value = spv.value;
-		if (this.rootProperty != null) {
-			value = this.stripInheritedPrefixFromValue(value);
-		}
 		
 		//Creating the PD to return
 		InheritableStringParameterDefinition ispd =
@@ -313,10 +316,13 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 	}
 	
 	public String getInheritanceMode() {
-		return this.inheritanceMode.name();
+		return this.getInheritanceModeAsVar().name();
 	}
 	
 	public IModes getInheritanceModeAsVar() {
+		if (this.inheritanceMode == null) {
+			return IModes.OVERWRITABLE;
+		}
 		return this.inheritanceMode;
 	}
 	
@@ -413,13 +419,23 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 		IModes currMode = IModes.OVERWRITABLE;
 		boolean mustHaveValueSet = false;
 		
-		for (ScopeEntry scope : fullScope) {
+		Iterator<ScopeEntry> iter = fullScope.iterator();
+		while(iter.hasNext()) {
+			ScopeEntry scope = iter.next();
 			if (!(scope.param instanceof InheritableStringParameterDefinition)) {
 				continue;
 			}
+			//Copy the ISPD and assign "our" root property as its parent, to
+			//make sure that it can properly discover its parents
 			InheritableStringParameterDefinition ispd =
-					(InheritableStringParameterDefinition) scope.param;
-			String ispdVal = (ispd == this)
+					(InheritableStringParameterDefinition)
+					scope.param.copyWithDefaultValue(
+							scope.param.getDefaultParameterValue()
+					);
+			ispd.setRootProperty(this.rootProperty);
+			
+			//The last value from the scope gets overwritten by the user-entered value
+			String ispdVal = (!iter.hasNext())
 					? userEnteredValue
 					: ispd.getDefaultValue();
 			
@@ -510,9 +526,10 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 	public String getDerivedValue(String userEnteredValue, boolean noThrow)
 			throws IllegalArgumentException {
 		try {
-			StringParameterValue spv = this.produceDerivedValue(
-					userEnteredValue
-			);
+			//Remove any prefix from parents, in case of a rebuild
+			String val = this.stripInheritedPrefixFromValue(userEnteredValue);
+			//Generate a full value based on that
+			StringParameterValue spv = this.produceDerivedValue(val);
 			if (spv == null) {
 				return null;
 			}
@@ -524,16 +541,21 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 		
 	}
 	
+	public String getLocalValue(String userEnteredValue) {
+		return this.stripInheritedPrefixFromValue(userEnteredValue);
+	}
+	
 	public String getDefaultValue() {
 		return super.getDefaultValue();
 	}
 	
-	protected String stripInheritedPrefixFromValue(String value) {
+	public String stripInheritedPrefixFromValue(String value) {
 		if (value == null || value.isEmpty() || this.rootProperty == null) {
 			return value;
 		}
 		
 		//Fetching the ordered list of all PDs in the inheritance scope
+		//Avoiding copying, as we might be called from within copyWithDefaultValue
 		List<ScopeEntry> fullScope =
 				this.rootProperty.getScopedParameterDefinition(this.getName());
 		if (fullScope == null || fullScope.isEmpty()) {
@@ -576,6 +598,8 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 				newVal = newVal.substring(defVal.length()).trim();
 			}
 		}
+		
+		//Returning the newly discovered value
 		return newVal;
 	}
 	
@@ -583,6 +607,35 @@ public class InheritableStringParameterDefinition extends StringParameterDefinit
 		super.setDefaultValue(defaultValue);
 	}
 	
+	/**
+	 * Returns the default value for this parameter.
+	 * <p>
+	 * It will always return the locally defined value, but not a derived one
+	 * you'd get via {@link #createValue(String)} or
+	 * {@link #createValue(StaplerRequest)}.
+	 * <p>
+	 * There are at least 3 different ways a job can be scheduled:
+	 * <ol>
+	 * 	<li>Spawned via an HTTP/CLI request with parameters assigned</li>
+	 * 	<li>Spawned via a parameterised trigger</li>
+	 * 	<li>Spawned via direct call to
+	 * 		{@link AbstractProject#scheduleBuild(hudson.model.Cause)} or other
+	 * 		methods.</li>.
+	 * </ol>
+	 * The first two pass through {@link #createValue(String)} or
+	 * {@link #createValue(StaplerRequest)}. Unfortunately, the last one
+	 * calls this method here directly.
+	 * <p>
+	 * As such, an InheritanceProject <b><i>does not call</b></i> its super
+	 * implementation. For performance reasons, we do not use reflection here,
+	 * as it is easier to simply not call the super class.
+	 * <p>
+	 * Always be aware of this locality of the value when using this method here.
+	 * 
+	 * @see InheritanceProject#scheduleBuild2(int, hudson.model.Cause, java.util.Collection)
+	 * 
+	 * @return the local default value for this parameter definition.
+	 */
 	@Override
 	public StringParameterValue getDefaultParameterValue() {
 		return super.getDefaultParameterValue();
