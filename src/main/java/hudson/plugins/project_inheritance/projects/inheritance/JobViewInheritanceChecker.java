@@ -23,6 +23,8 @@ public class JobViewInheritanceChecker extends RequestInheritanceChecker {
     private static final String FINDBUGS_TREND_GRAPH_REGEX = "findbugs/trendGraph/png";
 
     private static final String JACOCO_TREND_GRAPH_REGEX   = "jacoco/graph";
+    
+    private static final String WARNINGS_GRAPH_REGEX   = "warnings.*";
 
     public static final Pattern jobUriRegExp;
 
@@ -37,6 +39,8 @@ public class JobViewInheritanceChecker extends RequestInheritanceChecker {
         regExpBuilder.append(FINDBUGS_TREND_GRAPH_REGEX);
         regExpBuilder.append("|");
         regExpBuilder.append(JACOCO_TREND_GRAPH_REGEX);
+        regExpBuilder.append("|");
+        regExpBuilder.append(WARNINGS_GRAPH_REGEX);
         regExpBuilder.append(")?");
         jobUriRegExp = Pattern.compile(regExpBuilder.toString());
     }
