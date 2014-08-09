@@ -56,7 +56,5 @@ import java.util.regex.Pattern;
      public boolean isInheritanceRequired(String requestURI) {
         Matcher matcher = jobUriRegExp.matcher(requestURI);
         return matcher.matches();
-        // just allow everything
-        return true;
     }
 }
