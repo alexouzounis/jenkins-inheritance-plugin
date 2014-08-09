@@ -26,11 +26,11 @@ import java.util.regex.Pattern;
     
     private static final String WARNINGS_GRAPH_REGEX   = "warnings.*";
 
-    private static final String HTML_REPORT_REGEX   = "HTML_REPORT_.*";
+    private static final String HTML_REPORT_REGEX   = "HTML_REPORT/.*";
 
-    private static final String RELEASE_REGEX   = "release";
+    private static final String RELEASE_REGEX   = "release/";
 
-    private static final String EMAIL_TEMPLATE_TEST_REGEX   = "templateTest";
+    private static final String EMAIL_TEMPLATE_TEST_REGEX   = "templateTest/";
 
     public static final Pattern jobUriRegExp;
 
