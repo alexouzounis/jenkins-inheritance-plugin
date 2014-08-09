@@ -28,6 +28,10 @@ import java.util.regex.Pattern;
 
     private static final String HTML_REPORT_REGEX   = "HTML_REPORT_.*";
 
+    private static final String RELEASE_REGEX   = "release";
+
+    private static final String EMAIL_TEMPLATE_TEST_REGEX   = "templateTest";
+
     public static final Pattern jobUriRegExp;
 
     static {
@@ -45,6 +49,10 @@ import java.util.regex.Pattern;
         regExpBuilder.append(WARNINGS_GRAPH_REGEX);
         regExpBuilder.append("|");
         regExpBuilder.append(HTML_REPORT_REGEX);
+        regExpBuilder.append("|");
+        regExpBuilder.append(RELEASE_REGEX);
+        regExpBuilder.append("|");
+        regExpBuilder.append(EMAIL_TEMPLATE_TEST_REGEX);
         regExpBuilder.append(")?");
         jobUriRegExp = Pattern.compile(regExpBuilder.toString());
     }
