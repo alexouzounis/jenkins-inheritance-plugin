@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
     
     private static final String WARNINGS_GRAPH_REGEX   = "warnings.*";
 
-    private static final String HTML_REPORT_REGEX   = "HTML_REPORT/.*";
+    private static final String HTML_REPORT_REGEX   = "HTML_REPORT.*";
 
     private static final String RELEASE_REGEX   = "release.*";
 
