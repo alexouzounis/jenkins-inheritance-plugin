@@ -18,11 +18,11 @@ import java.util.regex.Pattern;
 
     private static final String JOB_RUN_PAGE_REGEX         = "[0-9]+/.*";
 
-    private static final String TEST_TREND_GRAPH_REGEX     = "test/trend";
+    private static final String TEST_TREND_GRAPH_REGEX     = "test.*";
 
-    private static final String FINDBUGS_TREND_GRAPH_REGEX = "findbugs/trendGraph/png";
+    private static final String FINDBUGS_TREND_GRAPH_REGEX = "findbugs.*";
 
-    private static final String JACOCO_TREND_GRAPH_REGEX   = "jacoco/graph";
+    private static final String JACOCO_TREND_GRAPH_REGEX   = "jacoco.*";
     
     private static final String WARNINGS_GRAPH_REGEX   = "warnings.*";
 
