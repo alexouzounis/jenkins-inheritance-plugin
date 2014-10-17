@@ -31,6 +31,10 @@ import java.util.regex.Pattern;
     private static final String RELEASE_REGEX   = "release.*";
 
     private static final String EMAIL_TEMPLATE_TEST_REGEX   = "templateTest.*";
+    
+    private static final String SVN_MERGE_INTEGRATION   = "integration-status.*";
+
+    private static final String SVN_MERGE_REBASE   = "rebase-branch.*";
 
     public static final Pattern jobUriRegExp;
 
@@ -53,6 +57,10 @@ import java.util.regex.Pattern;
         regExpBuilder.append(RELEASE_REGEX);
         regExpBuilder.append("|");
         regExpBuilder.append(EMAIL_TEMPLATE_TEST_REGEX);
+        regExpBuilder.append("|");
+        regExpBuilder.append(SVN_MERGE_INTEGRATION);
+        regExpBuilder.append("|");
+        regExpBuilder.append(SVN_MERGE_REBASE);
         regExpBuilder.append(")?");
         jobUriRegExp = Pattern.compile(regExpBuilder.toString());
     }
