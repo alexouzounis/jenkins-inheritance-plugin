@@ -35,6 +35,8 @@ import java.util.regex.Pattern;
     private static final String SVN_MERGE_INTEGRATION   = "integration-status.*";
 
     private static final String SVN_MERGE_REBASE   = "rebase-branch.*";
+    
+    private static final String SVN_MERGE_FBRANCHES   = "featureBranches.*";
 
     public static final Pattern jobUriRegExp;
 
@@ -61,6 +63,8 @@ import java.util.regex.Pattern;
         regExpBuilder.append(SVN_MERGE_INTEGRATION);
         regExpBuilder.append("|");
         regExpBuilder.append(SVN_MERGE_REBASE);
+        regExpBuilder.append("|");
+        regExpBuilder.append(SVN_MERGE_FBRANCHES);
         regExpBuilder.append(")?");
         jobUriRegExp = Pattern.compile(regExpBuilder.toString());
     }
