@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2011-2013, Intel Mobile Communications GmbH
- * Copyright © 2014 Contributor.  All rights reserved.
+ * Copyright ï¿½ 2014 Contributor.  All rights reserved.
  * 
  * 
  * This file is part of the Inheritance plug-in for Jenkins.
@@ -3445,7 +3445,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	
 	@Override
 	public SCM getScm() {
-		return getScm(IMode.AUTO);
+		return getScm(IMode.INHERIT_FORCED);
 	}
 	
 	public SCM getScm(IMode mode) {
