@@ -3445,7 +3445,7 @@ public class InheritanceProject	extends Project<InheritanceProject, InheritanceB
 	
 	@Override
 	public SCM getScm() {
-		return getScm(IMode.INHERIT_FORCED);
+		return getScm(IMode.AUTO);
 	}
 	
 	public SCM getScm(IMode mode) {
