@@ -405,6 +405,8 @@ public abstract class InheritanceGovernor<T> {
 	}
 	
 	public static boolean inheritanceLookupRequired(InheritanceProject root, boolean forcedInherit) {
+		//Default to yes, unless there is a compelling reason to not have inheritance lookup. 
+
 		//In a cyclic dependency, any form of inheritance would be ill-advised
 		try {
 			if (root.hasCyclicDependency()) {
@@ -415,53 +417,17 @@ public abstract class InheritanceGovernor<T> {
 			//an NPE which means no inheritance should be queried
 			return false;
 		}
-		/* Otherwise, an exploration is only required when one of the following
-		 * holds:
-		 * 1.) The user wants to force inheritance
-		 * 2.) The project is transient and has no real own configuration
-		 * 3.) The project is called in the context of a build
-		 * 4.) The queue queries properties of the project 
-		 */
-		if (forcedInherit || root.getIsTransient() ||
-				Reflection.calledFromClass(
-						Build.class, BuildCommand.class,
-						Queue.class, BuildTrigger.class, BuildStep.class
-				) ||
-				Reflection.calledFromMethod(
-						InheritanceProject.class,
-						"doBuild", "scheduleBuild2", "doBuildWithParameters", "buildDependencyGraph"
-				) ||
-				//for scmtriggr / polling
-				Reflection.calledFromMethod(
-						AbstractProject.class,
-						"poll"
-				) ||
-				// for all triggers
-				Reflection.calledFromMethod(
-						Trigger.class,
-						"checkTriggers"
-				) ||
-				Reflection.calledFromMethod(
-						RunListener.class,
-						"onCompleted"
-				) ||
-				Reflection.calledFromMethod(
-						AbstractRunner.class,
-						"post2"
-				)) {
-			return true;
-		}
-		//Another possibility is that the user requested a build page
+
 		StaplerRequest req = Stapler.getCurrentRequest();
 		if (req != null) {
 			String uri = req.getRequestURI();
-			if (inheritanceRequiredByRequestURI(uri)) {
-				return true;
+			//Check if we request the configure page. We don't want to see merged parameters in this case. 
+			if (uri.endsWith("/configure")) { 
+				return false;
 			}
 		}
 		
-		//in all other cases, we don't require (or want) inheritance
-		return false;
+		return true;
 	}
 	
     private static boolean inheritanceRequiredByRequestURI(String uri) {
